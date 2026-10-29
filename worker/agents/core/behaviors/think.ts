@@ -5,6 +5,7 @@ import { ThinkState } from '../state';
 import { AgentInitArgs, DeploymentTarget } from '../types';
 import { BaseCodingBehavior } from './base';
 import { WebSocketMessageResponses } from '../../constants';
+import { publishOrganizationQuestion } from '../../../services/org/run';
 import { ICodingAgent } from '../../services/interfaces/ICodingAgent';
 import { OperationOptions } from '../../operations/common';
 import { GenerationContext, AgenticGenerationContext } from '../../domain/values/GenerationContext';
@@ -112,6 +113,8 @@ export class ThinkCodingBehavior
 	extends BaseCodingBehavior<ThinkState>
 	implements ICodingAgent {
 	protected static readonly PROJECT_NAME_PREFIX_MAX_LENGTH = 20;
+
+	private organizationHold = false;
 
 	override getBehavior(): 'think' { return 'think'; }
 
@@ -315,7 +318,7 @@ export class ThinkCodingBehavior
 			'## Clarify before building',
 			'If the request is underspecified or ambiguous (e.g. a one-line idea with no details on features, scope, data, or design), do NOT start writing files yet. Instead, on this turn:',
 			'1. Briefly state the assumptions you would make to proceed.',
-			'2. Call the `ask_questions` tool with all the concise, targeted clarifying questions you need answered. Each question can include predefined options and can allow multiple selections and/or a custom free-text answer.',
+			'2. Call the `ask_questions` tool with exactly one question. Set targetRole to project-manager for requirements, product, naming, and UX. Set targetRole to developer for files, code, and technical choices. Do not write the question text in your message.',
 			'3. End your turn after calling `ask_questions`. Do not write/edit files or deploy until the scope is clear or the user tells you to proceed with your assumptions.',
 			'If the request is already clear and specific, skip this and go straight to building.',
 			'',
@@ -497,6 +500,7 @@ export class ThinkCodingBehavior
 	 * `UIMessageChunk`s into VibeSDK WebSocket events.
 	 */
 	private async runPrompt(text: string): Promise<void> {
+		this.organizationHold = false;
 		const conversationId = IdGenerator.generateConversationId();
 		this.broadcast(WebSocketMessageResponses.CONVERSATION_RESPONSE, {
 			message: '',
@@ -536,13 +540,14 @@ export class ThinkCodingBehavior
 			}
 			// Think's non-streaming finalize: the FE replaces content with this
 			// terminal payload, so only send it when we actually accumulated text.
-			if (accumulated.text) {
+			if (accumulated.text && !this.organizationHold) {
 				this.broadcast(WebSocketMessageResponses.CONVERSATION_RESPONSE, {
 					message: accumulated.text,
 					conversationId,
 					isStreaming: false,
 				});
 			}
+			this.organizationHold = false;
 		}
 	}
 
@@ -559,27 +564,11 @@ export class ThinkCodingBehavior
 				const delta = (chunk as { delta?: string }).delta;
 				if (typeof delta === 'string' && delta.length > 0) {
 					accumulated.text += delta;
-					this.broadcast(WebSocketMessageResponses.CONVERSATION_RESPONSE, {
-						message: delta,
-						conversationId,
-						isStreaming: true,
-						isDelta: true,
-					});
 				}
 				return;
 			}
-			case 'reasoning-delta': {
-				const delta = (chunk as { delta?: string }).delta;
-				if (typeof delta === 'string' && delta.length > 0) {
-					this.broadcast(WebSocketMessageResponses.CONVERSATION_RESPONSE, {
-						message: '',
-						conversationId,
-						isStreaming: true,
-						reasoning: { delta },
-					});
-				}
+			case 'reasoning-delta':
 				return;
-			}
 			case 'reasoning-end': {
 				this.broadcast(WebSocketMessageResponses.CONVERSATION_RESPONSE, {
 					message: '',
@@ -624,6 +613,17 @@ export class ThinkCodingBehavior
 				const { toolCallId, output } = chunk as { toolCallId: string; output: unknown };
 				const toolName = toolNames.get(toolCallId) || 'tool';
 				const args = toolInputs.get(toolCallId) || {};
+				if (toolName === 'ask_questions') {
+					this.organizationHold = true;
+					await publishOrganizationQuestion({
+						env: this.env,
+						appId: this.getAgentId(),
+						sockets: this.getWebSockets(),
+						args,
+						conversationId,
+					});
+					return;
+				}
 				this.broadcast(WebSocketMessageResponses.CONVERSATION_RESPONSE, {
 					message: '',
 					conversationId,

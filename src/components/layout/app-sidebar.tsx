@@ -180,8 +180,11 @@ export function AppSidebar() {
 	const { apps: favoriteApps, loading: favoriteAppsLoading } =
 		useFavoriteApps();
 	const { apps: allApps, loading: allAppsLoading } = useApps();
+	const sharedRole = sessionStorage.getItem('vibesdk-shared-role') ?? '';
 	const getAppPath = (app: App) =>
-		app.userId === user?.id ? `/chat/${app.id}` : `/app/${app.id}`;
+		sharedRole.includes('Project Manager') || sharedRole.includes('Developer') || app.userId === user?.id
+			? `/chat/${app.id}`
+			: `/app/${app.id}`;
 
 	const boards: Board[] = [];
 
@@ -235,22 +238,7 @@ export function AppSidebar() {
 				? `No other apps found for "${trimmedSearchQuery}"`
 				: `No apps found for "${trimmedSearchQuery}"`;
 
-	const getVisibilityIcon = (visibility: App['visibility']) => {
-		switch (visibility) {
-			case 'private':
-				return <LockKeyIcon className="size-3.5" weight="duotone" />;
-			case 'team':
-				return <UsersThreeIcon className="size-3.5" weight="duotone" />;
-			case 'board':
-			case 'public':
-				return (
-					<GlobeHemisphereWestIcon
-						className="size-3.5"
-						weight="duotone"
-					/>
-				);
-		}
-	};
+	const getVisibilityIcon = (_visibility: App['visibility']) => null;
 
 	return (
 		<Sidebar className="[--sidebar-bg:var(--color-kumo-canvas)]">

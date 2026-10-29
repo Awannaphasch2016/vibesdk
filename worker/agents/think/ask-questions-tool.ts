@@ -13,7 +13,7 @@ import { tool, type Tool } from 'ai';
 import { z } from 'zod';
 
 const DESCRIPTION = [
-	'Ask the user one or more clarifying questions when the request is underspecified or ambiguous.',
+	'Ask exactly one clarifying question. Set targetRole to project-manager for requirements, product, naming, and UX. Set targetRole to developer for files, code, and technical choices. Do not write the question text in your message.',
 	'',
 	'Each question can provide predefined answer options, allow multiple selections, and/or allow a free-text custom answer. The user can also skip the popup entirely.',
 	'',
@@ -47,6 +47,11 @@ export function createAskQuestionsTool(): Tool {
 							.boolean()
 							.optional()
 							.describe('When true, the user may enter a free-text answer not in options.'),
+						targetRole: z
+							.enum(['project-manager', 'developer'])
+							.optional()
+							.describe('Who answers. project-manager for requirements and UX. developer for files and code.'),
+
 					}),
 				)
 				.describe('One or more clarifying questions to present to the user.'),

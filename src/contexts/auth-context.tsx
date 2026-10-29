@@ -130,8 +130,102 @@ function buildSessionFromLogin(data: SessionResponse): CachedAuthSession {
 	};
 }
 
-async function fetchAuthSession(): Promise<CachedAuthSession | null> {
+async function sharedClerkPublishableKey(): Promise<string | null> {
+	const keyResponse = await fetch('/api/auth/clerk', { credentials: 'include' });
+	if (!keyResponse.ok) return null;
+	const body = await keyResponse.json();
+	const publishableKey = body.data?.publishableKey;
+	if (typeof publishableKey !== 'string' || !publishableKey.startsWith('pk_test_')) {
+		return null;
+	}
+	return publishableKey;
+}
+
+async function sharedClerkToken(): Promise<string | null> {
 	try {
+		const publishableKey = await sharedClerkPublishableKey();
+		if (!publishableKey) return null;
+		const frontendApi = atob(publishableKey.slice('pk_test_'.length)).replace(/\$$/, '');
+		const browserWindow = window as Window & {
+			Clerk?: {
+				load: (options: { publishableKey: string }) => Promise<void>;
+				session?: { getToken: () => Promise<string | null> } | null;
+			};
+		};
+		if (!browserWindow.Clerk) {
+			await new Promise<void>((resolve, reject) => {
+				const script = document.createElement('script');
+				script.async = true;
+				script.crossOrigin = 'anonymous';
+				script.src = `https://${frontendApi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js`;
+				script.setAttribute('data-clerk-publishable-key', publishableKey);
+				script.onload = () => resolve();
+				script.onerror = () => reject(new Error('Sign in is not available.'));
+				document.head.appendChild(script);
+			});
+		}
+		const clerk = browserWindow.Clerk;
+		if (!clerk) return null;
+		await clerk.load({ publishableKey });
+		return (await clerk.session?.getToken()) ?? null;
+	} catch {
+		return null;
+	}
+}
+
+async function startSharedSignIn(): Promise<void> {
+	const publishableKey = await sharedClerkPublishableKey();
+	if (!publishableKey) return;
+	const token = await sharedClerkToken();
+	if (token) {
+		window.location.reload();
+		return;
+	}
+	const clerk = (window as Window & {
+		Clerk?: {
+			redirectToSignIn?: (options: {
+				redirectUrl: string;
+				signInForceRedirectUrl: string;
+				signInFallbackRedirectUrl: string;
+			}) => Promise<unknown>;
+		};
+	}).Clerk;
+	const back = window.location.href;
+	if (!clerk?.redirectToSignIn) return;
+	sessionStorage.setItem('vibesdk-shared-pending', '1');
+	await clerk.redirectToSignIn({
+		redirectUrl: back,
+		signInForceRedirectUrl: back,
+		signInFallbackRedirectUrl: back,
+	});
+}
+async function fetchAuthSession(): Promise<CachedAuthSession | null> {
+	const sharedToken = await sharedClerkToken();
+	if (sessionStorage.getItem('vibesdk-shared-pending')) {
+		sessionStorage.removeItem('vibesdk-shared-pending');
+		if (!sharedToken) void fetch('/api/auth/shared/miss', { credentials: 'include' });
+	}
+	try {
+		if (sharedToken) {
+			const exchanged = await fetch('/api/auth/shared', {
+				method: 'POST',
+				credentials: 'include',
+				headers: { Authorization: `Bearer ${sharedToken}` },
+			});
+			if (exchanged.status === 403) return null;
+			if (exchanged.ok) {
+				const payload = await exchanged.json();
+				if (payload?.success && payload.data?.user) {
+					if (payload.data.organization && payload.data.role) {
+						sessionStorage.setItem(
+							'vibesdk-shared-role',
+							`${payload.data.organization} · ${payload.data.role}`,
+						);
+					}
+					return buildSessionFromLogin(payload.data);
+				}
+			}
+		}
 		const response = await apiClient.getProfile(true);
 
 		if (response.success && response.data?.user) {
@@ -358,6 +452,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 	const logoutMutation = useMutation({
 		mutationFn: async () => {
 			try {
+				const clerk = (window as Window & { Clerk?: { signOut?: () => Promise<void> } }).Clerk;
+				if (clerk?.signOut) await clerk.signOut();
+				sessionStorage.removeItem('vibesdk-shared-role');
 				await apiClient.logout();
 			} catch (err) {
 				console.error('Logout error:', err);

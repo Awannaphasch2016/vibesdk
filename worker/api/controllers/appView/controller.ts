@@ -4,6 +4,7 @@ import { ApiResponse, ControllerResponse } from '../types';
 import type { RouteContext } from '../../types/route-context';
 import { getAgentStubLightweight } from '../../../agents';
 import { AppService } from '../../../database/services/AppService';
+import { memberCanAccessApp } from '../../../services/org/run';
 import { 
     AppDetailsData, 
     AppStarToggleData,
@@ -57,7 +58,8 @@ export class AppViewController extends BaseController {
             }
 
             // Check if user has permission to view
-            if (appResult.visibility === 'private' && appResult.userId !== userId) {
+            const orgMember = userId ? await memberCanAccessApp(env, appId, userId) : false;
+            if (appResult.visibility === 'private' && !orgMember) {
                 return AppViewController.createErrorResponse<AppDetailsData>('App not found', 404);
             }
 

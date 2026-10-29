@@ -24,6 +24,7 @@ import { WebSocketMessageData, WebSocketMessageType } from "worker/api/websocket
 import { PreviewType, TemplateDetails } from "worker/services/sandbox/sandboxTypes";
 import { WebSocketMessageResponses } from "../constants";
 import { AppService, ModelConfigService } from "worker/database";
+import { claimOrganizationApp, rememberOrganizationRole } from "../../services/org/run";
 import { ConversationMessage, ConversationState } from "../inferutils/common";
 import { ImageAttachment } from "worker/types/image-attachment";
 import { RateLimitExceededError } from "shared/types/errors";
@@ -243,6 +244,7 @@ export class CodeGeneratorAgent extends Agent<Env, AgentState> implements AgentI
     
     onConnect(connection: Connection, ctx: ConnectionContext) {
         this.logger().info(`Agent connected for agent ${this.getAgentId()}`, { connection, ctx });
+        rememberOrganizationRole(connection as unknown as WebSocket, ctx.request);
         // Capture the encrypted Cloudflare OAuth blob from the WS upgrade request's
         // HttpOnly cookie and stash it on the DO state. The browser cannot read this
         // cookie, and messages over the WS do not carry cookies per-frame, so this
@@ -450,6 +452,7 @@ export class CodeGeneratorAgent extends Agent<Env, AgentState> implements AgentI
                 createdAt: new Date(),
             updatedAt: new Date()
             });
+        await claimOrganizationApp(this.env, this.state.metadata.agentId, this.state.metadata.userId);
         this.logger().info(`App saved successfully to database for agent ${this.state.metadata.agentId}`, { 
             agentId: this.state.metadata.agentId, 
             userId: this.state.metadata.userId,

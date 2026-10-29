@@ -254,7 +254,6 @@ function ChatSession() {
 		awaitingStartConfirmation,
 		confirmStart,
 		// Clarifying questions popup state
-		clarifyingQuestions,
 		submitClarifyingAnswers,
 		dismissClarifyingQuestions,
 	} = useChat({
@@ -272,7 +271,7 @@ function ChatSession() {
 	const githubExport = useGitHubExport(websocket, urlChatId, refetchApp);
 	const { user } = useAuth();
 	const queryClient = useQueryClient();
-	const isOwner = !!app && app.userId === user?.id;
+	const isOwner = false;
 
 	const handleToggleVisibility = useCallback(async () => {
 		if (!app || !user || !isOwner) {
@@ -385,21 +384,7 @@ function ChatSession() {
 					>
 						{headerTitle}
 					</div>
-					{app?.visibility && (
-						<Badge
-							className="shrink-0"
-							variant={
-								app.visibility === 'private'
-									? 'secondary'
-									: 'success'
-							}
-						>
-							<span className="inline-flex items-center gap-1">
-								<Globe className="h-3 w-3" weight="duotone" />
-								{capitalizeFirstLetter(app.visibility)}
-							</span>
-						</Badge>
-					)}
+				
 				</div>
 			),
 			trailing: (
@@ -965,15 +950,30 @@ function ChatSession() {
 	}, [isBootstrapping, isGeneratingBlueprint]);
 
 	// Check if chat input should be disabled (before blueprint completion, or during debugging)
+	const [orgBody, setOrgBody] = useState('');
+	const [orgWaiting, setOrgWaiting] = useState('');
+	useEffect(() => {
+		if (!urlChatId) return;
+		let stop = false;
+		const look = async () => {
+			const response = await fetch(`/api/org/question?appId=${encodeURIComponent(urlChatId)}`, { credentials: 'include' });
+			if (!response.ok) return;
+			const payload = await response.json();
+			if (stop) return;
+			setOrgBody(typeof payload?.data?.body === 'string' ? payload.data.body : '');
+			setOrgWaiting(typeof payload?.data?.waiting === 'string' ? payload.data.waiting : '');
+		};
+		void look();
+		const timer = window.setInterval(() => void look(), 500);
+		return () => {
+			stop = true;
+			window.clearInterval(timer);
+		};
+	}, [urlChatId]);
 	const isChatDisabled = useMemo(() => {
-		const blueprintStage = projectStages.find(
-			(stage) => stage.id === 'blueprint',
-		);
-		const blueprintNotCompleted =
-			!blueprintStage || blueprintStage.status !== 'completed';
-
-		return blueprintNotCompleted || isDebugging;
-	}, [projectStages, isDebugging]);
+		if (orgBody) return false;
+		return true;
+	}, [orgBody]);
 
 	const chatFormRef = useRef<HTMLFormElement>(null);
 	const { isDragging: isChatDragging, dragHandlers: chatDragHandlers } =
@@ -1136,6 +1136,11 @@ function ChatSession() {
 										message={query ?? displayQuery}
 									/>
 								)}
+								{orgBody ? (
+									<p data-testid="org-question" className="text-sm">{orgBody}</p>
+								) : orgWaiting ? (
+									<p data-testid="org-waiting" className="text-sm">{orgWaiting}</p>
+								) : null}
 
 								{mainMessage?.role === 'assistant' && (
 									<div className="relative">
@@ -1381,17 +1386,7 @@ function ChatSession() {
 							onConnectCloudflare={() => {
 								void startCloudflareConnect(window.location.href);
 							}}
-							aboveContent={
-								<ClarifyingQuestionsPopup
-									questions={clarifyingQuestions ?? []}
-									open={
-										clarifyingQuestions !== null &&
-										clarifyingQuestions.length > 0
-									}
-									onSubmit={submitClarifyingAnswers}
-									onDismiss={dismissClarifyingQuestions}
-								/>
-							}
+							aboveContent={null}
 						/>
 					</motion.div>
 

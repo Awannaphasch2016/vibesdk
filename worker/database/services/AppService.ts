@@ -3,6 +3,7 @@
  */
 
 import { BaseService } from './BaseService';
+import { canDeleteProject, memberCanAccessApp } from '../../services/org/run';
 import * as schema from '../schema';
 import { eq, and, or, desc, asc, sql, isNull, inArray } from 'drizzle-orm';
 import { generateId } from '../../utils/idGenerator';
@@ -328,11 +329,10 @@ export class AppService extends BaseService {
         // Use 'fresh' strategy for user's own data to ensure they see latest changes
         const readDb = this.getReadDb('fresh');
         
-        // Fetch user's apps first
         const apps = await readDb
             .select()
             .from(schema.apps)
-            .where(eq(schema.apps.userId, userId))
+            .where(sql`id in (select project_id from project_members where user_id = ${userId})`)
             .orderBy(desc(schema.apps.updatedAt))
             .limit(limit)
             .offset(offset);
@@ -479,9 +479,10 @@ export class AppService extends BaseService {
             return { exists: false, isOwner: false };
         }
 
+        const mayOpen = await memberCanAccessApp(this.env, appId, userId);
         return {
             exists: true,
-            isOwner: app.userId === userId,
+            isOwner: mayOpen,
             visibility: app.visibility as 'private' | 'public' | null
         };
     }
@@ -551,9 +552,7 @@ export class AppService extends BaseService {
             return { success: false, error: 'App not found' };
         }
 
-        if (existingApp[0].userId !== userId) {
-            return { success: false, error: 'You can only change visibility of your own apps' };
-        }
+        return { success: false, error: 'Changing the gallery flag is not available.' };
 
         // Update the app visibility. Bump `previewVersion` on every visibility
         // change so outstanding space-preview tokens (which embed the value at
@@ -1119,8 +1118,9 @@ export class AppService extends BaseService {
                 return { success: false, error: 'App not found' };
             }
             
-            if (!ownershipResult.isOwner) {
-                return { success: false, error: 'You can only delete your own apps' };
+            const mayDelete = await canDeleteProject(this.env, appId, userId);
+            if (!mayDelete) {
+                return { success: false, error: 'Deleting an app is not available.' };
             }
 
             // Delete related records first (foreign key constraints)
@@ -1154,10 +1154,7 @@ export class AppService extends BaseService {
             // Finally delete the app itself
             const deleteResult = await this.database
                 .delete(schema.apps)
-                .where(and(
-                    eq(schema.apps.id, appId),
-                    eq(schema.apps.userId, userId)
-                ))
+                .where(eq(schema.apps.id, appId))
                 .returning({ id: schema.apps.id });
 
             if (deleteResult.length === 0) {

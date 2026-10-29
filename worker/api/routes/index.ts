@@ -1,4 +1,5 @@
 import { setupAuthRoutes } from './authRoutes';
+import { setupOrgRoutes } from './orgRoutes';
 import { setupAppRoutes } from './appRoutes';
 import { setupUserRoutes } from './userRoutes';
 import { setupStatsRoutes } from './statsRoutes';
@@ -36,6 +37,7 @@ export function setupRoutes(app: Hono<AppEnv>): void {
 
     // Authentication and user management routes
     setupAuthRoutes(app);
+    setupOrgRoutes(app);
     // Cloudflare "Connect" OAuth routes (for per-user AI Gateway tokens)
     setupCloudflareConnectRoutes(app);
     // Cloudflare account and gateway management routes
