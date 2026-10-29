@@ -165,7 +165,8 @@ export function getSecureHeadersConfig(env: Env): SecureHeadersConfig {
         `wss://${env.CUSTOM_DOMAIN || '*'}`,
         // API endpoints
         "https://api.github.com",
-        "https://api.cloudflare.com"
+        "https://api.cloudflare.com",
+        "https://*.clerk.accounts.dev", "https://*.accounts.dev", "https://*.clerk.com", "https://challenges.cloudflare.com"
     ];
 
     if (isSeparatePreviewDomain(env)) {
@@ -180,6 +181,7 @@ export function getSecureHeadersConfig(env: Env): SecureHeadersConfig {
                 "'self'",
                 // Allow inline scripts with nonce (Hono will add nonce automatically)
                 "'strict-dynamic'",
+                "https://*.clerk.accounts.dev", "https://*.accounts.dev", "https://*.clerk.com", "https://challenges.cloudflare.com",
                 // Development only - for hot reload
                 ...(isDevelopment ? ["'unsafe-eval'"] : [])
             ],
@@ -199,15 +201,16 @@ export function getSecureHeadersConfig(env: Env): SecureHeadersConfig {
                 "blob:",
                 "https://avatars.githubusercontent.com", // GitHub avatars
                 "https://lh3.googleusercontent.com", // Google avatars
+                "https://img.clerk.com",
                 "https://*.cloudflare.com" // Cloudflare assets
             ],
             connectSrc: [
                 ...connectSources
             ],
-            frameSrc: ["'none'"],
+            frameSrc: ["'self'", "https://*.clerk.accounts.dev", "https://*.accounts.dev", "https://*.clerk.com", "https://challenges.cloudflare.com"],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'"],
-            workerSrc: ["'self'", "blob:"],
+            workerSrc: ["'self'", "blob:", "https://*.clerk.accounts.dev", "https://*.accounts.dev", "https://*.clerk.com", "https://challenges.cloudflare.com"],
             formAction: ["'self'"],
             frameAncestors: ["'none'"],
             baseUri: ["'self'"],
@@ -233,9 +236,9 @@ export function getSecureHeadersConfig(env: Env): SecureHeadersConfig {
         referrerPolicy: 'strict-origin-when-cross-origin',
         
         // Cross-Origin policies
-        crossOriginEmbedderPolicy: 'require-corp',
+        crossOriginEmbedderPolicy: false,
         crossOriginResourcePolicy: 'same-origin',
-        crossOriginOpenerPolicy: 'same-origin',
+        crossOriginOpenerPolicy: 'same-origin-allow-popups',
         
         // Origin Agent Cluster
         originAgentCluster: '?1',

@@ -3,7 +3,7 @@
  * Supports both OAuth and email/password authentication with backward compatibility
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
 	Banner,
 	Button,
@@ -53,6 +53,75 @@ interface LoginModalProps {
 
 type AuthMode = 'login' | 'register';
 
+async function sharedClerkPublishableKey(): Promise<string | null> {
+	const keyResponse = await fetch('/api/auth/clerk', { credentials: 'include' });
+	if (!keyResponse.ok) return null;
+	const body = await keyResponse.json();
+	const publishableKey = body.data?.publishableKey;
+	if (typeof publishableKey !== 'string' || !publishableKey.startsWith('pk_test_')) {
+		return null;
+	}
+	return publishableKey;
+}
+
+async function sharedClerkToken(): Promise<string | null> {
+	try {
+		const publishableKey = await sharedClerkPublishableKey();
+		if (!publishableKey) return null;
+		const frontendApi = atob(publishableKey.slice('pk_test_'.length)).replace(/\$$/, '');
+		const browserWindow = window as Window & {
+			Clerk?: {
+				load: (options: { publishableKey: string }) => Promise<void>;
+				session?: { getToken: () => Promise<string | null> } | null;
+			};
+		};
+		if (!browserWindow.Clerk) {
+			await new Promise<void>((resolve, reject) => {
+				const script = document.createElement('script');
+				script.async = true;
+				script.crossOrigin = 'anonymous';
+				script.src = `https://${frontendApi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js`;
+				script.setAttribute('data-clerk-publishable-key', publishableKey);
+				script.onload = () => resolve();
+				script.onerror = () => reject(new Error('Sign in is not available.'));
+				document.head.appendChild(script);
+			});
+		}
+		const clerk = browserWindow.Clerk;
+		if (!clerk) return null;
+		await clerk.load({ publishableKey });
+		return (await clerk.session?.getToken()) ?? null;
+	} catch {
+		return null;
+	}
+}
+
+async function startSharedSignIn(): Promise<void> {
+	const publishableKey = await sharedClerkPublishableKey();
+	if (!publishableKey) return;
+	const token = await sharedClerkToken();
+	if (token) {
+		window.location.reload();
+		return;
+	}
+	const clerk = (window as Window & {
+		Clerk?: {
+			redirectToSignIn?: (options: {
+				redirectUrl: string;
+				signInForceRedirectUrl: string;
+				signInFallbackRedirectUrl: string;
+			}) => Promise<unknown>;
+		};
+	}).Clerk;
+	const back = window.location.href;
+	if (!clerk?.redirectToSignIn) return;
+	sessionStorage.setItem('vibesdk-shared-pending', '1');
+	await clerk.redirectToSignIn({
+		redirectUrl: back,
+		signInForceRedirectUrl: back,
+		signInFallbackRedirectUrl: back,
+	});
+}
 export function LoginModal({
 	isOpen,
 	onClose,
@@ -85,11 +154,15 @@ export function LoginModal({
 	// whenever the backend reports the email provider is enabled, independently of
 	// whether any OAuth provider is also configured.
 	const emailAuthEnabled = authProviders?.email ?? true;
-	const hasEmailAuth = emailAuthEnabled && !!onEmailLogin;
-	const hasRegistration = emailAuthEnabled && !!onRegister;
-	const showGitHub = authProviders?.github && hasOAuth;
-	const showGoogle = authProviders?.google && hasOAuth;
-	const showCloudflare = authProviders?.cloudflare && hasOAuth;
+	const hasEmailAuth = emailAuthEnabled && false && !!onEmailLogin;
+	const hasRegistration = emailAuthEnabled && false && !!onRegister;
+	const showGitHub = authProviders?.github && false && hasOAuth;
+	const showGoogle = authProviders?.google && false && hasOAuth;
+	const showCloudflare = authProviders?.cloudflare && false && hasOAuth;
+	useEffect(() => {
+		if (!isOpen) return;
+		void startSharedSignIn();
+	}, [isOpen]);
 
 	const resetForm = () => {
 		setEmail('');
@@ -267,6 +340,16 @@ export function LoginModal({
 
 				{/* Authentication Options */}
 				<div className={cn('p-6 space-y-4 pt-6')}>
+					<Button
+						type="button"
+						variant="primary"
+						className="w-full justify-center"
+						onClick={() => {
+							void startSharedSignIn();
+						}}
+					>
+						Sign in
+					</Button>
 					{/* GitHub */}
 					{showGitHub && (
 						<Button

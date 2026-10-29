@@ -13,12 +13,81 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { OrangeButton } from '@/components/shared/OrangeButton';
-import { useAuthModal } from '../auth/AuthModalProvider';
+
 import { useHeaderContent } from './header-context';
 
+async function sharedClerkPublishableKey(): Promise<string | null> {
+	const keyResponse = await fetch('/api/auth/clerk', { credentials: 'include' });
+	if (!keyResponse.ok) return null;
+	const body = await keyResponse.json();
+	const publishableKey = body.data?.publishableKey;
+	if (typeof publishableKey !== 'string' || !publishableKey.startsWith('pk_test_')) {
+		return null;
+	}
+	return publishableKey;
+}
+
+async function sharedClerkToken(): Promise<string | null> {
+	try {
+		const publishableKey = await sharedClerkPublishableKey();
+		if (!publishableKey) return null;
+		const frontendApi = atob(publishableKey.slice('pk_test_'.length)).replace(/\$$/, '');
+		const browserWindow = window as Window & {
+			Clerk?: {
+				load: (options: { publishableKey: string }) => Promise<void>;
+				session?: { getToken: () => Promise<string | null> } | null;
+			};
+		};
+		if (!browserWindow.Clerk) {
+			await new Promise<void>((resolve, reject) => {
+				const script = document.createElement('script');
+				script.async = true;
+				script.crossOrigin = 'anonymous';
+				script.src = `https://${frontendApi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js`;
+				script.setAttribute('data-clerk-publishable-key', publishableKey);
+				script.onload = () => resolve();
+				script.onerror = () => reject(new Error('Sign in is not available.'));
+				document.head.appendChild(script);
+			});
+		}
+		const clerk = browserWindow.Clerk;
+		if (!clerk) return null;
+		await clerk.load({ publishableKey });
+		return (await clerk.session?.getToken()) ?? null;
+	} catch {
+		return null;
+	}
+}
+
+async function startSharedSignIn(): Promise<void> {
+	const publishableKey = await sharedClerkPublishableKey();
+	if (!publishableKey) return;
+	const token = await sharedClerkToken();
+	if (token) {
+		window.location.reload();
+		return;
+	}
+	const clerk = (window as Window & {
+		Clerk?: {
+			redirectToSignIn?: (options: {
+				redirectUrl: string;
+				signInForceRedirectUrl: string;
+				signInFallbackRedirectUrl: string;
+			}) => Promise<unknown>;
+		};
+	}).Clerk;
+	const back = window.location.href;
+	if (!clerk?.redirectToSignIn) return;
+	sessionStorage.setItem('vibesdk-shared-pending', '1');
+	await clerk.redirectToSignIn({
+		redirectUrl: back,
+		signInForceRedirectUrl: back,
+		signInFallbackRedirectUrl: back,
+	});
+}
 export function GlobalHeader() {
 	const { user, isLoading: authLoading } = useAuth();
-	const { showAuthModal } = useAuthModal();
+
 	const { isMobile } = useSidebar();
 	const { content } = useHeaderContent();
 	const { status } = usePlatformStatus();
@@ -76,7 +145,9 @@ export function GlobalHeader() {
 						{!authLoading && !user && (
 							<OrangeButton
 								size="sm"
-								onClick={() => showAuthModal()}
+								onClick={() => {
+								void startSharedSignIn();
+							}}
 								icon={<SignInIcon className="size-4" />}
 							>
 								Sign In

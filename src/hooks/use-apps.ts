@@ -171,6 +171,8 @@ export function useApps(): AppHookState<AppWithFavoriteStatus> {
 		queryKey: queryKeys.account.apps.user(user?.id),
 		queryFn: fetchUserApps,
 		enabled: !!user,
+		refetchInterval: () =>
+			sessionStorage.getItem('vibesdk-shared-role') ? 2000 : false,
 	});
 
 	return {
@@ -191,6 +193,8 @@ export function useRecentApps() {
 		queryKey: queryKeys.account.apps.user(user?.id),
 		queryFn: fetchUserApps,
 		enabled: !!user,
+		refetchInterval: () =>
+			sessionStorage.getItem('vibesdk-shared-role') ? 2000 : false,
 		select: (apps) => computeRecentApps(apps),
 	});
 

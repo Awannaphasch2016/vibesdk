@@ -1,4 +1,5 @@
 import { Connection } from 'agents';
+import { acceptOrganizationAnswer, redactConversation } from '../../services/org/run';
 import { createLogger } from '../../logger';
 import { WebSocketMessageRequests, WebSocketMessageResponses } from '../constants';
 import { WebSocketMessage, WebSocketMessageData, WebSocketMessageType } from '../../api/websocketTypes';
@@ -262,6 +263,11 @@ export async function handleWebSocketMessage(
                     return;
                 }
                 
+                const turn = await acceptOrganizationAnswer(agent.env, agent.getAgentId(), connection as unknown as WebSocket, parsedMessage.message);
+                if (!turn.allow) {
+                    sendError(connection, turn.message);
+                    return;
+                }
                 agent.handleUserInput(parsedMessage.message, parsedMessage.images).catch((error: unknown) => {
                     logger.error('Error handling user suggestion:', error);
                     sendError(connection, `Error processing user suggestion: ${error instanceof Error ? error.message : String(error)}`);
@@ -297,8 +303,9 @@ export async function handleWebSocketMessage(
 						.getBehavior()
 						.getDeepDebugSessionState();
 					logger.info(`Conversation state retrieved for ${state.id}`);
+                    const visible = await redactConversation(agent.env, agent.getAgentId(), connection as unknown as WebSocket, state);
                     sendToConnection(connection, WebSocketMessageResponses.CONVERSATION_STATE, {
-                        state,
+                        state: visible,
                         deepDebugSession: debugState
                     });
                 } catch (error) {

@@ -7,6 +7,7 @@ import { Loader2, LucideGlobeLock } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { cn, Button, DropdownMenu } from '@cloudflare/kumo';
 import { useAuth } from '../../contexts/auth-context';
+import { SharedRole } from './shared-role';
 import { getInitials } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Skeleton } from '../ui/skeleton';
@@ -91,7 +92,7 @@ export function AuthButton({ className, display = 'icon' }: AuthButtonProps) {
 							</Avatar>
 							<span className="min-w-0 flex-1 flex-col group-data-[state=collapsed]/sidebar:hidden">
 								<span className="block truncate text-sm font-medium text-kumo-default">
-									{user.displayName || 'User'}
+									<span className="flex min-w-0 flex-col"><span>{user.displayName || 'User'}</span><SharedRole /></span>
 								</span>
 								{showLimitsState && (
 									<span

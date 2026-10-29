@@ -232,7 +232,7 @@ export class AppController extends BaseController {
 
             if (!result.success) {
                 const statusCode = result.error === 'App not found' ? 404 : 
-                                 result.error?.includes('only change visibility of your own apps') ? 403 : 500;
+                                 result.error?.includes('not available') ? 403 : 500;
                 return AppController.createErrorResponse<UpdateAppVisibilityData>(result.error || 'Failed to update app visibility', statusCode);
             }
 
@@ -265,7 +265,7 @@ export class AppController extends BaseController {
 
             if (!result.success) {
                 const statusCode = result.error === 'App not found' ? 404 : 
-                                 result.error?.includes('only delete your own apps') ? 403 : 500;
+                                 result.error?.includes('not available') ? 403 : 500;
                 return AppController.createErrorResponse<AppDeleteData>(result.error || 'Failed to delete app', statusCode);
             }
 

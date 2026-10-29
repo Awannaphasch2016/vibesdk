@@ -1,4 +1,5 @@
 import { WebSocketMessageResponses } from '../../../agents/constants';
+import { assertProjectManager, authorizeOrganizationSocket, memberCanAccessApp } from '../../../services/org/run';
 import { BaseController } from '../baseController';
 import { generateId } from '../../../utils/idGenerator';
 import { AgentState } from '../../../agents/core/state';
@@ -96,6 +97,10 @@ export class CodingAgentController extends BaseController {
             const writer = writable.getWriter();
             // Check if user is authenticated (required for app creation)
             const user = context.user!;
+            const manager = await assertProjectManager(env, user.id);
+            if (!manager.ok) {
+                return CodingAgentController.createErrorResponse(manager.message, 403);
+            }
             try {
                 await RateLimitService.enforceAppCreationRateLimit(env, context.config.security.rateLimit, user, request);
             } catch (error) {
@@ -338,9 +343,9 @@ export class CodingAgentController extends BaseController {
             try {
                 // Get the agent instance to handle the WebSocket connection
                 const agentInstance = await getAgentStub(env, agentId);
-
-                // Let the agent handle the WebSocket connection directly
-                return agentInstance.fetch(request);
+                const tagged = await authorizeOrganizationSocket(env, user.id, agentId, request);
+                if (tagged instanceof Response) return tagged;
+                return agentInstance.fetch(tagged);
             } catch (error) {
                 this.logger.error(`Failed to get agent instance with ID ${agentId}:`, error);
                 // Return an appropriate WebSocket error response
@@ -447,7 +452,8 @@ export class CodingAgentController extends BaseController {
             if(appResult.visibility !== 'public') {
                 // If user is logged in and is the owner, allow preview deployment
                 const user = context.user;
-                if (!user || user.id !== appResult.userId) {
+                const orgMember = user ? await memberCanAccessApp(env, agentId, user.id) : false;
+                if (!user || !orgMember) {
                     return CodingAgentController.createErrorResponse<AgentPreviewResponse>('App is not public. Preview deployment is only available for public apps.', 403);
                 }
             }

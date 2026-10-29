@@ -2,6 +2,7 @@
  * Authentication Routes
  */
 import { AuthController } from '../controllers/auth/controller';
+import { SharedSignInController } from '../controllers/auth/sharedSignIn';
 import { Hono } from 'hono';
 import { AppEnv } from '../../types/appenv';
 import { adaptController } from '../honoAdapter';
@@ -17,6 +18,11 @@ export function setupAuthRoutes(app: Hono<AppEnv>): void {
     // Public authentication routes
     authRouter.get('/csrf-token', setAuthLevel(AuthConfig.public), adaptController(AuthController, AuthController.getCsrfToken));
     authRouter.get('/providers', setAuthLevel(AuthConfig.public), adaptController(AuthController, AuthController.getAuthProviders));
+    authRouter.get('/clerk', setAuthLevel(AuthConfig.public), adaptController(SharedSignInController, SharedSignInController.clerk));
+    authRouter.get('/session', setAuthLevel(AuthConfig.public), adaptController(SharedSignInController, SharedSignInController.session));
+    authRouter.post('/shared', setAuthLevel(AuthConfig.public), adaptController(SharedSignInController, SharedSignInController.shared));
+    authRouter.get('/shared/last', setAuthLevel(AuthConfig.public), adaptController(SharedSignInController, SharedSignInController.last));
+    authRouter.get('/shared/miss', setAuthLevel(AuthConfig.public), adaptController(SharedSignInController, SharedSignInController.miss));
     authRouter.post('/register', setAuthLevel(AuthConfig.public), adaptController(AuthController, AuthController.register));
     authRouter.post('/login', setAuthLevel(AuthConfig.public), adaptController(AuthController, AuthController.login));
     authRouter.get('/check', setAuthLevel(AuthConfig.public), adaptController(AuthController, AuthController.checkAuth));

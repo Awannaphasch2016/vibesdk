@@ -123,6 +123,8 @@ export default function Home() {
 	const discoverApps = useMemo(() => (apps ?? []).slice(0, 9), [apps]);
 
 	const handleCreateApp = (query: string, mode: ProjectType) => {
+		const sharedRole = sessionStorage.getItem('vibesdk-shared-role') ?? '';
+		if (sharedRole.includes('Developer')) return;
 		if (query.length > MAX_AGENT_QUERY_LENGTH) {
 			toast.error(
 				`Prompt too large (${query.length} characters). Maximum allowed is ${MAX_AGENT_QUERY_LENGTH} characters.`,
